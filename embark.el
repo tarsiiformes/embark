@@ -7,7 +7,7 @@
 ;; Keywords: convenience
 ;; Version: 1.2
 ;; URL: https://github.com/oantolin/embark
-;; Package-Requires: ((emacs "29.1") (compat "30"))
+;; Package-Requires: ((emacs "29.1") (compat "31"))
 
 ;; This file is part of GNU Emacs.
 
@@ -990,11 +990,11 @@ As a convenience, in Org Mode an initial ' or surrounding == or
       (when (derived-mode-p 'org-mode)
         (cond ((string-prefix-p "'" name)
                (setq name (substring name 1))
-               (cl-incf (car bounds)))
+               (incf (car bounds)))
               ((string-match-p "^\\([=~]\\).*\\1$" name)
                (setq name (substring name 1 -1))
-               (cl-incf (car bounds))
-               (cl-decf (cdr bounds)))))
+               (incf (car bounds))
+               (decf (cdr bounds)))))
       (mapcar (lambda (type) `(,type ,name . ,bounds))
               (embark--identifier-types name)))))
 
@@ -1066,27 +1066,13 @@ their own target finder.  See for example
   "Return the completion candidate at point in a completions buffer."
   (embark--with-completion-list-buffer
    (lambda ()
-     ;; TODO Use `completion-list-candidate-at-point' via Compat 31 as soon as
-     ;; it becomes available instead of this delicate logic.
-     (when (get-text-property (point) 'mouse-face)
-       (let (beg end)
-         (cond
-          ((and (not (eobp)) (get-text-property (point) 'mouse-face))
-           (setq end (point) beg (1+ (point))))
-          ((and (not (bobp))
-                (get-text-property (1- (point)) 'mouse-face))
-           (setq end (1- (point)) beg (point))))
-         (when (and beg end)
-           (setq beg (previous-single-property-change beg 'mouse-face))
-           (setq end (or (next-single-property-change end 'mouse-face)
-                         (point-max)))
-           (let ((raw (or (get-text-property beg 'completion--string)
-                          (buffer-substring beg end))))
-             `(,embark--type
-               ,(if (eq embark--type 'file)
-                    (abbreviate-file-name (expand-file-name raw))
-                  raw)
-               ,beg . ,end))))))))
+     (pcase (completion-list-candidate-at-point)
+       (`(,raw ,beg ,end)
+        `(,embark--type
+          ,(if (eq embark--type 'file)
+               (abbreviate-file-name (expand-file-name raw))
+             raw)
+          ,beg . ,end))))))
 
 (defun embark--cycle-key ()
   "Return the key to use for `embark-cycle'."
@@ -1457,16 +1443,13 @@ If NESTED is non-nil subkeymaps are not flattened."
                    collect (cons formatted item))))
     (cons candidates default)))
 
-;; TODO Use `completion-table-with-metadata' via Compat 31.
 (defun embark--with-category (category candidates)
   "Return completion table for CANDIDATES of CATEGORY with sorting disabled."
-  (lambda (string predicate action)
-    (if (eq action 'metadata)
-        `(metadata (display-sort-function . identity)
-                   (cycle-sort-function . identity)
-                   (category . ,category))
-      (complete-with-action
-       action candidates string predicate))))
+  (completion-table-with-metadata
+   candidates
+   `((display-sort-function . identity)
+     (cycle-sort-function . identity)
+     (category . ,category))))
 
 (defun embark-completing-read-prompter (keymap update &optional no-default)
   "Prompt via completion for a command bound in KEYMAP.
